@@ -21,6 +21,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(ggplot2)
 library(ggpubr)
+library(cowplot)
 
 knitr::write_bib(c(.packages(),
                    "knitr", "rmarkdown"), "refs/Packages.bib")
@@ -90,7 +91,7 @@ knitr::kable(data_1, caption = "Table 1: Counts of the 4 levels of reported anxi
  chi_res <- chisq.test(data_1$Counts, p = c(0.25,0.25,0.25,0.25))
 ```
 
-We are assuming that the levels of anxiety will be uniformly distributed as there is no simple or concrete way to create a model for theoretical metal health proportions of university students. 
+We are assuming that the levels of anxiety will be uniformly distributed as there is no simple or concrete way to create a model for theoretical metal health proportions of university students within this report. 
 
  - Hypothesis: H0: the proportions are equal vs H1: at least one proportion is not equal. 
 
@@ -100,7 +101,8 @@ We are assuming that the levels of anxiety will be uniformly distributed as ther
 
 - P-value: P($\chi^2_2 \ge$ `r signif(chi_res$statistic,2)` ) = `r format.pval(chi_res$p.value,digits = 3, eps = 0.001)`
 
-- Decision: Reject H0 if the p-value <α, otherwise do not reject H0.
+- Decision: Reject H0. The anxiety levels are not uniformly distributed. 
+
 
 ```{r,  message = FALSE}
 data_2 <- raw_data %>%
@@ -124,53 +126,105 @@ data_2 <- raw_data %>%
 knitr::kable(data_2, caption = "Table 2: Counts of the 4 levels of reported anxiety based on current ")
 
 graph_data <- data_2 %>%
+  mutate(Third_or_above_proportion = (Third_or_above)/sum(data_2$Third_or_above)) %>%
+  mutate(Second_or_below_proportion = (Second_or_below )/sum(data_2$Second_or_below )) %>%
+  select(-c(Second_or_below , Third_or_above )) %>%
   pivot_longer(!category, names_to = "uni_year")
-
-p3 <- ggplot(data = graph_data, aes(x = category, y = value, fill = uni_year)) +
-  geom_bar(stat="identity", position=position_dodge())
-
-p3
 ```
 
-Now a test needs to be for the assumptions
+We wanted to see visually how the proportions of the 2 different groups compared:
+
+```{r,  message = FALSE}
+p3 <- ggplot(data = graph_data, aes(x = category, y = value, fill = uni_year)) +
+  geom_bar(stat="identity", position=position_dodge()) + 
+  labs(title = "Proportions of anxiety levels based on uni stage",)
+
+p3
+
+
+chi_res_2 <- chisq.test(as.matrix(data_2[,-1]))
+
+chi_res_2_sim <- chisq.test(as.matrix(data_2[,-1]), simulate.p.value = TRUE)
+```
+
+Now we want to perform a something chi-square test to see if there is a significant difference between these two groups. 
+
+ - Hypothesis: H0: The proportions between the two groups are the same vs H1: The proportions between the two groups are different.  
+
+- Assumptions: That the observations are independent, and $e_i$ = $np_i \ge 5$, which we have confirmed to be `r all(chi_res_2$expected > 5)`.
+
+- Test statistic: $T = \sum_i^k \frac{(Y_i - e_i)^2}{e_i}$.
+
+- P-value: P($\chi^2_2 \ge$ `r signif(chi_res_2$statistic,2)` ) = `r format.pval(chi_res_2$p.value,digits = 3, eps = 0.001)`
+
+- Decision: Accept H0. The anxiety levels are different between different stages of study.  
+
+If we were to simulate these p-values because the assumptions weren't met, our simulated p-value would be `r signif(chi_res_2_sim$p.value,3)`
 
 
 ## Question 2
 
-@ESSADEK2020392 shows that the COVID-19 pandemic had a drastic effect on the mental health of students in France. This next question will explore whether being diagnosed with COVID-19 has had an effect on the mental health ratings of students in Data20x2. 
+@ESSADEK2020392 shows that the COVID-19 pandemic had a drastic effect on the mental health of students in France. This next section will explore whether being diagnosed with COVID-19 has had an effect on the mental health ratings of students in Data20x2. 
 
 
-```{r,  message = FALSE}
-# Question 2 - COVID-1919 and mental health - compare - two sample t test, check if the average is significantly different
+```{r fig-covid,  message = FALSE}
+# Question 2 - COVID-19 and mental health - compare - two sample t test, check if the average is significantly different
 
-data_2 <- raw_data %>%
+data_3 <- raw_data %>%
   select(c(covid_positive,wam)) %>%
   filter(wam > 30) %>%
   drop_na() %>%
   group_by(covid_positive) 
 
-summary_data_2 <- data_2 %>%
+summary_data_3 <- data_3 %>%
   summarise(n = n(),
             Mean = mean(wam) %>% signif(2),
             SD = sd(wam) %>% signif(2)
             )
-knitr::kable(summary_data_2)
+knitr::kable(summary_data_3)
 
-p1 <-  ggplot(data_2 ,aes(x = covid_positive, y = wam, colour = covid_positive)) + 
+p1 <-  ggplot(data_3 ,aes(x = covid_positive, y = wam, colour = covid_positive)) + 
   geom_boxplot(outlier.shape = NA) + #remove outliers so not confused with jitter
   geom_jitter()   +
   labs(y = "Wam", x = "Has tested positive for COVID-19")
 
-p2 <-   ggqqplot(data_2, x = "wam", facet.by = "covid_positive")
-p2
+p2 <-   ggqqplot(data_3, x = "wam", facet.by = "covid_positive")
+
+plot_grid(p1, p2, labels = "AUTO")
 
 
 ```
 
+Based on the QQ, our sample is almost Normally distributed. However, we need to check our population variances.
 
+```{r, message = FALSE}
+f_test <- var.test(data_3$wam[data_3$covid_positive == "Yes"], data_3$wam[data_3$covid_positive == "No"])
+```
+
+After performing an F-test to check variance differences, the p-value is `r signif(f_test$p.value,2)` is less that the significance level 0.05, we cannot accept equal variance. Because of this, we will conduct a Welch test.
+
+```{r}
+t_test <- t.test(data_3$wam[data_3$covid_positive == "Yes"], data_3$wam[data_3$covid_positive == "No"])
+```
+
+1. **Hypothesis**:  Let $\mu_A$ and $\mu_C$ be the population means for respondents who have tested COVID positive and COVID negative respectively.
+$H_0$: $\mu_A$ = $\mu_C$
+$H_1$: $\mu_A \ne \mu_C$
+
+2. **Assumptions**: The two populations are normally distributed (the points are all reasonably close to the line in the QQ plot in the right panel of the figure but do not have the same variance. 
+
+3. **Test statistic**: $t_0 = \frac{m_A - m_C}{s_p \sqrt{\frac{1}{n_A} + \frac{1}{n_C}}}$ 
+
+4. **Observed test statistic**: $t_0$ = `r signif(t_test$statistic,3)`
+
+5. **p-value** P($t_{`r t_test$parameter`} \le `r signif(t_test$statistic,3)`)  `r format.pval(t_test$p.value,digits = 2, eps = 0.001)`$
+
+6. **Decision** The p-value is less than 0.05, we reject the null hypothesis and conclude there is a significant difference in the mean WAM of people who have tested positive and negative for COVID.
+
+# Question 3
 
 ```{r,  message = FALSE}
-# Question 1 - yeah of study and mental health vs mental health - re-sampling of some kind 
+# Question 3 - 
 
 
 
