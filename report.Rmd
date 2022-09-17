@@ -1,5 +1,5 @@
 ---
-title: "Investigating the Relationship between Different Lifestyle Factors and Mental Health "
+title: "Investigating the Relationship between Different Mental Health Risk Factors For Data2x02 Students"
 author: "470354388"
 date: "`r format(Sys.time(), '%d %B, %Y %H:%M')`"
 bibliography: [refs/bibliography.bibtex, refs/Packages.bib]
@@ -49,8 +49,8 @@ For the purposes of this report, the study would have had better results to ask 
 
 Question-wording bias could have also had an effect on the results. The original question "How often would you say you feel anxious on a daily basis?" does not directly ask about the respondents mental health situation. Although day to day anxiety does not necessarily mean a person is suffering from mental health problems, it is closely related enough for the purposes of this report. However, if the survey was to be conducted again, questions such as "Do you suffer from a stress related mental health condition" or "Have you felt in the past year that university has effected your mental health? If so in a good way or a bad way?" would be more valid for research conducted around mental health.
 
+Another variable that could have been affected in this report is the study_hrs, where students might be confused if that refers to in class time or only private study.
 
-This report borrowed formatting and code snippets from  @Garth_Tar
 
 
 # Data Cleaning
@@ -59,15 +59,17 @@ This report was produced using R [@R-base] within the Rmarkdown environment [@rm
 
 Data was wrangled differently for each question. NA's were removed on a case by case basis. Each section will provide an explanation of the wrangling involved and the reasoning behind the decisions made.
 
+This report borrowed formatting and code snippets from  @Garth_Tar
+
 # Results
 
-## Question 1
+## Question 1 - How is Reported Anxiety Levels distributed Among Different Year Groups
 
 To begin, it was worth simply investigating whether the proportion of students who reported feeling anxious was of roughly equal proportion, and if the proportions changed when the sample was split based on what stage of uni they were currently attending. @Orygen reports that the proportion of students who report mental health issues increases from first to second year and beyond, this will be formally tested to discover if there is a significant difference. 
 
 ### Data Cleaning
 
-Firstly the data was filtered out by study load. This report only wants to focus on full time uni students, as study  has been reported to have a large impact on the mental health of students by @InformEd. 
+Firstly the data was filtered out by study load. This question only wants to focus on full time uni students, as higher study load has been reported to have a large impact on the mental health of students by @InformEd. 
 Then the anxiousness of the respondent was divided into one of 4 categories based on the numeric value obtained: Bad, Medium Bad, Medium Good and Good.
 
 
@@ -91,9 +93,9 @@ knitr::kable(data_1, caption = "Table 1: Counts of the 4 levels of reported anxi
  chi_res <- chisq.test(data_1$Counts, p = c(0.25,0.25,0.25,0.25))
 ```
 
-We are assuming that the levels of anxiety will be uniformly distributed as there is no simple or concrete way to create a model for theoretical metal health proportions of university students within this report. 
+We are assuming that the levels of anxiety will be uniformly distributed as there is no simple or concrete way to create a model for different theoretical mental health proportions of university students within this report. 
 
- - Hypothesis: H0: the proportions are equal vs H1: at least one proportion is not equal. 
+ - Hypothesis: $H_0$: the proportions are equal vs $H_1$: at least one proportion is not equal. 
 
 - Assumptions: That the observations are independent, and $e_i$ = $np_i \ge 5$, which we have confirmed to be `r all(chi_res$expected > 5)`.
 
@@ -108,7 +110,7 @@ We are assuming that the levels of anxiety will be uniformly distributed as ther
 data_2 <- raw_data %>%
   filter(study_load == 'Full time') %>% #only want full timers 
   select(c(feel_anxious, uni_year)) %>% # grab the cols we want to analyze
-  drop_na() %>% # removing rows with na values
+  drop_na() %>% # removing rows with Na values
   group_by(uni_year) %>%
   mutate(category = cut(feel_anxious, breaks = c(-Inf, 2.5, 5, 7.5, Inf),
                         labels = c("Bad", "Medium_Bad", "Medium_Good", "Good"))) %>% #separate the numerical data into 4 categorical sets
@@ -116,14 +118,14 @@ data_2 <- raw_data %>%
   summarise(Counts = n()) %>% #counting the number of each category
   pivot_wider(names_from = uni_year, values_from = Counts) %>%
   rename_all(~str_replace_all(., "\\s+", "_")) %>% #changing some column names
-  mutate_at(c('Fifth_or_higher_year','First_year'), replace_na, 0) %>% #making nas = 0 as they will be useful for calculations
+  mutate_at(c('Fifth_or_higher_year','First_year'), replace_na, 0) %>% #making NAs = 0 as they will be useful for calculations
   ungroup() %>%
   group_by(category) %>%
-  mutate(Third_or_above = sum(Fifth_or_higher_year, Fourth_year, Third_year)) %>% # agregating small groups into single larger group
+  mutate(Third_or_above = sum(Fifth_or_higher_year, Fourth_year, Third_year)) %>% # aggregating small groups into single larger group
   mutate(Second_or_below = sum(First_year, Second_year)) %>% #same as above but with first and second years
   select(-c(Fifth_or_higher_year, Fourth_year, Third_year, First_year, Second_year)) #drop cols we no longer need
   
-knitr::kable(data_2, caption = "Table 2: Counts of the 4 levels of reported anxiety based on current ") #print the table
+knitr::kable(data_2, caption = "Table 2: Counts of the 4 levels of reported anxiety based on approximate year of study") #print the table
 
 graph_data <- data_2 %>% # make a table that has proportions rather than counts so the graph represents the data better
   mutate(Third_or_above_proportion = (Third_or_above)/sum(data_2$Third_or_above)) %>%
@@ -132,24 +134,27 @@ graph_data <- data_2 %>% # make a table that has proportions rather than counts 
   pivot_longer(!category, names_to = "uni_year") 
 ```
 
-We wanted to see visually how the proportions of the 2 different groups compared:
+
+
+We now want to see visually how the proportions of the 2 different groups compared:
 
 ```{r,  message = FALSE}
 p3 <- ggplot(data = graph_data, aes(x = category, y = value, fill = uni_year)) +
   geom_bar(stat="identity", position=position_dodge()) + 
-  labs(title = "Proportions of anxiety levels based on uni stage",)
+  labs(title = "Proportions of anxiety levels based on uni stage", y = "Proportion of group", x = "Level of reported anxiety", colour = "Year of Study")
 
 p3
 
 
 chi_res_2 <- chisq.test(as.matrix(data_2[,-1]))
 
-chi_res_2_sim <- chisq.test(as.matrix(data_2[,-1]), simulate.p.value = TRUE) #monte carlo simulation
+set.seed(1)
+chi_res_2_sim <- chisq.test(as.matrix(data_2[,-1]), simulate.p.value = TRUE) #Monte Carlo simulation
 ```
 
 Now we want to perform a something chi-square test to see if there is a significant difference between these two groups. 
 
- - Hypothesis: H0: The proportions between the two groups are the same vs H1: The proportions between the two groups are different.  
+ - Hypothesis: $H_0$: The proportions between the two groups are the same vs $H_1$: The proportions between the two groups are different.  
 
 - Assumptions: That the observations are independent, and $e_i$ = $np_i \ge 5$, which we have confirmed to be `r all(chi_res_2$expected > 5)`.
 
@@ -157,23 +162,23 @@ Now we want to perform a something chi-square test to see if there is a signific
 
 - P-value: P($\chi^2_2 \ge$ `r signif(chi_res_2$statistic,2)` ) = `r format.pval(chi_res_2$p.value,digits = 3, eps = 0.001)`
 
-- Decision: Accept H0. The anxiety levels are different between different stages of study.  
+- Decision: Accept $H_0$. The anxiety levels are not different between different stages of study.  
 
 If we were to simulate these p-values because the assumptions weren't met, our simulated p-value would be `r signif(chi_res_2_sim$p.value,3)`
 
 
-## Question 2
+## Question 2 - Does having COVID-19 Effect Students' WAM
 
-@ESSADEK2020392 shows that the COVID-19 pandemic had a drastic effect on the mental health of students in France. This next section will explore whether being diagnosed with COVID-19 has had an effect on the mental health ratings of students in Data20x2. 
+@ESSADEK2020392 showed that the COVID-19 pandemic had a drastic effect on the mental health of students in France. This next section will explore whether being diagnosed with COVID-19 has had an effect on the mental health ratings of students in Data20x2. 
 
 ### Data Cleaning
 
-We filtered out WAMS less than 30 as they seem unreasonably low and could be an error or fake data. This time we didn't filter out part time students as their WAM could have as easily been effected by COVID. In this data we dropped NA values as setting to any other value would contaminate the data. 
+We filtered out WAMs less than 30 as they seem unreasonably low and could be an error or fake data. This time we didn't filter out part time students as their WAM could have as easily been effected by COVID-19. In this data we dropped NA values as setting to any other value would contaminate the data. 
 
 ```{r fig-covid,  message = FALSE}
 # Question 2 - COVID-19 and mental health - compare - two sample t test, check if the average is significantly different
 
-data_3 <- raw_data %>% #did not filer full timers out this time as it would not really effect wam 
+data_3 <- raw_data %>% #did not filer full timers out this time as it would not really effect WAM 
   select(c(covid_positive,wam)) %>%
   filter(wam > 30) %>% #remove outliers
   drop_na() %>%
@@ -181,15 +186,15 @@ data_3 <- raw_data %>% #did not filer full timers out this time as it would not 
 
 summary_data_3 <- data_3 %>%
   summarise(n = n(),
-            Mean = mean(wam) %>% signif(2),
-            SD = sd(wam) %>% signif(2)
+            Mean_WAM = mean(wam) %>% signif(2),
+            SD_WAM = sd(wam) %>% signif(2)
             ) #create a nice summary table
 knitr::kable(summary_data_3)
 
 p1 <-  ggplot(data_3 ,aes(x = covid_positive, y = wam, colour = covid_positive)) + 
   geom_boxplot(outlier.shape = NA) + #remove outliers so not confused with jitter
   geom_jitter()   +
-  labs(y = "Wam", x = "Has tested positive for COVID-19")
+  labs(y = "Wam", x = "Has tested positive for COVID-19", colour = "COVID-19 Positive") 
 
 p2 <-   ggqqplot(data_3, x = "wam", facet.by = "covid_positive")
 
@@ -198,7 +203,7 @@ plot_grid(p1, p2, labels = "AUTO")
 
 ```
 
-Based on the QQ, our sample is almost Normally distributed. However, we need to check our population variances.
+Based on the QQ plot, our sample is almost normally distributed. However, we need to check our population variances.
 
 ```{r, message = FALSE}
 f_test <- var.test(data_3$wam[data_3$covid_positive == "Yes"], data_3$wam[data_3$covid_positive == "No"]) #testing for equal variances
@@ -220,15 +225,20 @@ $H_1$: $\mu_A \ne \mu_C$
 
 - Observed test statistic: $t_0$ = `r signif(t_test$statistic,3)`
 
-- p-value: P($t_{`r t_test$parameter`} \le `r signif(t_test$statistic,3)`)  `r format.pval(t_test$p.value,digits = 2, eps = 0.001)`$
+- p-value: P($t_{`r t_test$parameter`} \le `r signif(t_test$statistic,3)`) = `r format.pval(t_test$p.value,digits = 2, eps = 0.001)`$
 
-- Decision: The p-value is less than 0.05, we reject $h_0$ and conclude there is a significant difference in the mean WAM of people who have tested positive and negative for COVID.
+- Decision: The p-value is less than 0.05, we reject $H_0$ and conclude there is a significant difference in the mean WAM of people who have tested positive and negative for COVID.
 
-## Question 3
+## Question 3 - Do Different Employment Types Have a Significant Effect of Study Hours
 
-According to one survey conducted by the National Survey of Student Engagement, most college students spend an average of 10–13 hours per week studying (@CP) - less than half of what is expected. Only about 11% of students spend more than 25 hours/week on schoolwork. Considering @NLM reports that is a significant and negative relationship between hours studying and depression, we wanted to investigate if casual and part time workers study significantly less than the prescribed average as suggested by USYD, which is 30.
+According to one survey conducted by the National Survey of Student Engagement, most college students spend an average of 10–13 hours per week studying (@CP) - less than half of what is expected. Only about 11% of students spend more than 25 hours per week on schoolwork. Considering @NLM reports that there is a significant and negative relationship between hours studying and depression, so we wanted to investigate if casual and part time workers study significantly less than the prescribed average as suggested by USYD, which is 30.
 
-Below we have graphed the average work hours against study hours between different employment types. They outliers were removed, as this graphs purpose is to get a general idea of what the trends may be. 
+### Data Cleaning
+
+For this data, we combined any of the miscellaneous work types so that we were dealing with the four main types: Unemployed, Casual, Part time and Full time. We removed anyone records with study_hrs = 0 because they could be false records.
+
+
+Below we have graphed the average work hours against study hours between different employment types. They outliers were removed, as the purpose of this graph is to get a general idea of what the trends may be. It seems that there is a very loose downward trend between employment hours and study hours, however there does not seem to be a noticeable difference between casual and part time employees. 
 
 ```{r,  message = FALSE}
 # Question 3 - 
@@ -237,7 +247,7 @@ data_4 <- raw_data %>%
   filter(study_load == 'Full time') %>%
   select(c(study_hrs, work)) %>%
   drop_na() %>%
-  mutate(work = recode(work, "Part time, self employed and contractor" = "Part time", "Casual and Contractor on different jobs" = "Casual", "Self employed" = "Casual", "Doing internship during the vacation" = "I don't currently work", "Contractor" = "Part time"))  %>% #aggregated some of the misc work types into more popular types so that we onl have 4 groups to work with
+  mutate(work = recode(work, "Part time, self employed and contractor" = "Part time", "Casual and Contractor on different jobs" = "Casual", "Self employed" = "Casual", "Doing internship during the vacation" = "I don't currently work", "Contractor" = "Part time"))  %>% #aggregated some of the misc work types into more popular types so that we only have 4 groups to work with
   filter(work %in% c("Casual", "Part time")) %>% #collect only the cols we want to analyze
   filter(study_hrs != 0)
 
@@ -255,8 +265,8 @@ p5 <- ggplot(graph_data_5) +
   aes(x = employment_hrs, 
       y = study_hrs,
       colour = work) +
-  geom_point()
-
+  geom_point() +
+   labs(title = "Study Hours vs Working Hours between different working types", x = "Hours spent working per week", y = "Hours pent studying per week", colour = "Employment Type")
 p5
 p4
 
@@ -282,13 +292,13 @@ casual_test <- t.test(data_4[data_4$work == "Part time", "study_hrs"], mu = 30, 
 
 - p-value for part time workers: P($t_{`r part_time_test$parameter`} \le `r signif(part_time_test$statistic,2)`)  `r format.pval(part_time_test$p.value,digits = 2, eps = 0.001)`$
 
-- Decision: Reject in $H_0$ and accept $H_1$ in both cases, as the observed test statistic is smaller than the critical value. This shows that students in Data2x02 that work casual or part time jobs work less than the recommend USYD average. 
+- Decision: Reject in $H_0$ and accept $H_1$ in both cases, as the observed test statistic is smaller than the critical value. This shows that students in Data2x02 that work casual or part time jobs study less than the recommend USYD average. 
 
 # Conclusion
 
-There are many factors that can contribute to poor mental health in university students. We have shown tha the anxiety levels of Data2x02 students is not uniformally distributed, however there seems to be no significant skew in anxity as these students spend more years studying.
+There are many factors that can contribute to poor mental health in university students. We have shown that the anxiety levels of Data2x02 students is not uniformly distributed, however there seems to be no significant skew in anxiety as these students spend more years studying.
 
-There also seems to be some significant effect that being diagnosed with covid has on these students WAM. More research would need to be spent fining out which group does better in their studies and why.
+There also seems to be some significant effect that being diagnosed with COVID has on these students WAM. More research would need to be spent finding out which group does better in their studies and why.
 
 Finally, it seems that the kind of work students undertake does not make a difference as to whether they complete the recommended 30 hours of study a week or not, as all students analyzed studied significantly less. 
 
