@@ -20,6 +20,7 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(ggplot2)
+library(ggpubr)
 
 knitr::write_bib(c(.packages(),
                    "knitr", "rmarkdown"), "refs/Packages.bib")
@@ -38,44 +39,141 @@ colnames(raw_data) = new_names
 
 
 # Introduction
-@Orygen
 
+Poor mental health is an issue that effects Australians of all ages. Recent studies, such as @AIHW have shown that university students suffer from mental health challenges at a greater proportion than the population. This report aims to use the data gathered by a survey of Data2x02 students to investigate trends in the mental health reported, as well as identifying variables that could significantly indicate higher risk individuals for poor mental health. 
 
-Is this a random sample of DATA2X02 students?
+The validity of the results of this report may be affected by biases in the data set. This data set is not random, and may be affected by survivorship bias. Specifically, this report focuses on students' reported anxiety levels on one given day. Students with chronic mental health issues may not attend class (@AJE), or may not have been able to fill out this survey, leading to a non-representative sample. 
 
-What are the potential biases? Which variables are most likely to be subjected to this bias?
+For the purposes of this report, the study would have had better results to ask students throughout the course of a semester, instead of on a single day. 
 
-Which questions needed improvement to generate useful data (e.g. in terms of the way the question was phrased or response validation)?
+Question-wording bias could have also had an effect on the results. The original question "How often would you say you feel anxious on a daily basis?" does not directly ask about the respondents mental health situation. Although day to day anxiety does not necessarily mean a person is suffering from mental health problems, it is closely related enough for the purposes of this report. However, if the survey was to be conducted again, questions such as "Do you suffer from a stress related mental health condition" or "Have you felt in the past year that university has effected your mental health? If so in a good way or a bad way?" would be more valid for research conducted around mental health.
+
 
 This report borrowed formatting and code snippets from  @Garth_Tar
 
+
+# Data Cleaning
+
+This report was produced using R [@R-base] within the Rmarkdown environment [@rmarkdown2018] for reproducibility. Data cleaning was almost entirely using tidyverse [@tidyverse2019]. Graphs were produced with ggplot2 [@tidyverse2019].
+
+Data was wrangled differently for each question. NA's were removed on a case by case basis. Each section will provide an explanation of the wrangling involved and the reasoning behind the decisions made.
+
 # Results
 
-## Is there a significant difference between the sleep times of students with different emplyment requirements? 
+## Question 1
+
+To begin, it was worth simply investigating whether the proportion of students who reported feeling anxious was of roughly equal proportion, and if the proportions changed when the sample was split based on what stage of uni they were currently attending. @Orygen reports that the proportion of students who report mental health issues increases from first to second year and beyond, this will be formally tested to discover if there is a significant difference. 
+
+## Data Cleaning
+
+Firstly the data was filtered out by study load. This report only wants to focus on full time uni students, as study  has been reported to have a large impact on the mental health of students by @InformEd. 
+Then the anxiousness of the respondent was divided into one of 4 categories based on the numeric value obtained: Bad, Medium Bad, Medium Good and Good.
 
 
-```{r,  message = FALSE}
-#Question 3 - sleep time, work - difference between 2 groups (full time study only) 
+```{r table_1,  message = FALSE}
+#Question 1 - proportions of good vs bad mental health - are the proportions the same?
+
 
 data_1 <- raw_data %>%
+  filter(study_load == 'Full time') %>% #filter for full time
+  select(c(feel_anxious)) %>% #only select the responses to feel anxious
+  drop_na() %>% #remove non-responses
+  mutate(category = cut(feel_anxious, breaks = c(-Inf, 2.5, 5, 7.5, Inf),
+                        labels = c("Bad", "Medium_Bad", "Medium_Good", "Good"))) %>% # split into 4 categories based on numeric results. 4 was chosen because it divides somewhat evenly into 10
+  group_by(category) %>%
+  summarise(Counts = n()) # convert into a table of counts
+
+knitr::kable(data_1, caption = "Table 1: Counts of the 4 levels of reported anxiety")
+
+
+
+ chi_res <- chisq.test(data_1$Counts, p = c(0.25,0.25,0.25,0.25))
+```
+
+We are assuming that the levels of anxiety will be uniformly distributed as there is no simple or concrete way to create a model for theoretical metal health proportions of university students. 
+
+ - Hypothesis: H0: the proportions are equal vs H1: at least one proportion is not equal. 
+
+- Assumptions: That the observations are independent, and $e_i$ = $np_i \ge 5$, which we have confirmed to be `r all(chi_res$expected > 5)`.
+
+- Test statistic: $T = \sum_i^k \frac{(Y_i - e_i)^2}{e_i}$.
+
+- P-value: P($\chi^2_2 \ge$ `r signif(chi_res$statistic,2)` ) = `r format.pval(chi_res$p.value,digits = 3, eps = 0.001)`
+
+- Decision: Reject H0 if the p-value <α, otherwise do not reject H0.
+
+```{r,  message = FALSE}
+data_2 <- raw_data %>%
   filter(study_load == 'Full time') %>%
-  select(c(work, sleep_time, wake_time)) %>%
+  select(c(feel_anxious, uni_year)) %>%
   drop_na() %>%
-  mutate(x1 = replace(x1, x1 == 2, 99))
+  group_by(uni_year) %>%
+  mutate(category = cut(feel_anxious, breaks = c(-Inf, 2.5, 5, 7.5, Inf),
+                        labels = c("Bad", "Medium_Bad", "Medium_Good", "Good"))) %>%
+  group_by(uni_year, category) %>%
+  summarise(Counts = n()) %>%
+  pivot_wider(names_from = uni_year, values_from = Counts) %>%
+  rename_all(~str_replace_all(., "\\s+", "_")) %>%
+  mutate_at(c('Fifth_or_higher_year','First_year'), replace_na, 0) %>%
+  ungroup() %>%
+  group_by(category) %>%
+  mutate(Third_or_above = sum(Fifth_or_higher_year, Fourth_year, Third_year)) %>%
+  mutate(Second_or_below = sum(First_year, Second_year)) %>%
+  select(-c(Fifth_or_higher_year, Fourth_year, Third_year, First_year, Second_year))
   
+knitr::kable(data_2, caption = "Table 2: Counts of the 4 levels of reported anxiety based on current ")
 
+graph_data <- data_2 %>%
+  pivot_longer(!category, names_to = "uni_year")
+
+p3 <- ggplot(data = graph_data, aes(x = category, y = value, fill = uni_year)) +
+  geom_bar(stat="identity", position=position_dodge())
+
+p3
 ```
 
-## Does physical activity significantly impact the mental health of students? 
+Now a test needs to be for the assumptions
+
+
+## Question 2
+
+@ESSADEK2020392 shows that the COVID-19 pandemic had a drastic effect on the mental health of students in France. This next question will explore whether being diagnosed with COVID-19 has had an effect on the mental health ratings of students in Data20x2. 
+
 
 ```{r,  message = FALSE}
-# Question 1 - sport hours vs mental health - resampling of some kind 
+# Question 2 - COVID-1919 and mental health - compare - two sample t test, check if the average is significantly different
+
+data_2 <- raw_data %>%
+  select(c(covid_positive,wam)) %>%
+  filter(wam > 30) %>%
+  drop_na() %>%
+  group_by(covid_positive) 
+
+summary_data_2 <- data_2 %>%
+  summarise(n = n(),
+            Mean = mean(wam) %>% signif(2),
+            SD = sd(wam) %>% signif(2)
+            )
+knitr::kable(summary_data_2)
+
+p1 <-  ggplot(data_2 ,aes(x = covid_positive, y = wam, colour = covid_positive)) + 
+  geom_boxplot(outlier.shape = NA) + #remove outliers so not confused with jitter
+  geom_jitter()   +
+  labs(y = "Wam", x = "Has tested positive for COVID-19")
+
+p2 <-   ggqqplot(data_2, x = "wam", facet.by = "covid_positive")
+p2
+
 
 ```
+
+
 
 ```{r,  message = FALSE}
-# Question 2 - covid19 and wam - compare - paired t test
+# Question 1 - yeah of study and mental health vs mental health - re-sampling of some kind 
+
+
+
 
 ```
-
 # References
